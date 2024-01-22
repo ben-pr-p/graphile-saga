@@ -1,6 +1,8 @@
 # graphile-saga
 
-A TypeScript library for managing complex, multi-step processes with automatic rollback capabilities in the event of a failure. Built on top of `graphile-worker` and `zod`, `graphile-saga` provides a robust solution for implementing the saga pattern with strong type safety and easy-to-follow cancellation semantics.
+A TypeScript library for managing complex, multi-step processes with automatic rollback capabilities in the event of a failure.
+Built on top of [`graphile-worker-zod`](https://github.com/ben-pr-p/graphile-worker-zod) and `zod`, `graphile-saga` provides a robust solution for implementing the saga pattern
+with strong type safety and easy-to-follow cancellation semantics.
 
 ## Installation
 
