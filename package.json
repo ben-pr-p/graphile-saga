@@ -1,0 +1,33 @@
+{
+  "name": "graphile-saga",
+  "main": "dist/index.js",
+  "version": "0.0.1",
+  "devDependencies": {
+    "bun-types": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0",
+    "graphile-worker-zod": "^0.0.1",
+    "graphile-worker": "^0.16.2",
+    "zod": "^3.22.4"
+  },
+  "dependencies": {
+    "pg": "^8.11.3"
+  },
+  "scripts": {
+    "compile": "tsc -p tsconfig.build.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:ben-pr-p/graphile-saga.git"
+  },
+  "author": "Ben Packer <ben.paul.ryan.packer@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ben-pr-p/graphile-saga"
+  },
+  "homepage": "https://github.com/ben-pr-p/graphile-saga"
+}
