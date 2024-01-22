@@ -55,7 +55,7 @@ const makeReservationSaga = createSaga('makeReservation', z.object({
     run: async (initialPayload, priorResults, helpers) => {
       const carAvailable = await carService.checkAvailability(initialPayload.carId);
       if (!carAvailable) {
-				// Cancel throws a custom error which triggers rollbacks all the way up
+        // Cancel throws a custom error which triggers rollbacks all the way up
         helpers.cancel('Car not available');
       }
       const carConfirmation = await carService.reserveCar(initialPayload.carId);
@@ -75,14 +75,60 @@ rolling back to the previous step.
 import { makeReservationSaga } from './makeReservationSaga';
 
 const taskList = {
-	// this has all of your regular graphile worker tasks
-	// just add your saga task lists to it
-	...makeReservationSaga.getTaskList()
-	...otherSaga.taskList()
+  // this has all of your regular graphile worker tasks
+  // just add your saga task lists to it
+  ...makeReservationSaga.getTaskList()
+  ...otherSaga.taskList()
 } as const;
 ```
 
 Then you can queue a `makeReservation` job by any allowed method, and the whole saga will run.
+
+In addition to implementing things that might be cancellable, graphile-saga can also help you avoid retrying things that
+might be expensive, computationally or monetarily:
+```typescript
+import { makeAi } from 'zod-ai';
+
+const client = new OpenAI(process.env.OPENAI_API_KEY);
+
+const ai = makeAi({
+  client,
+  model: "gpt-4",
+});
+
+const draftEmailFunction = ai(
+  z
+    .function()
+    .args(z.string())
+    .returns(z.object({
+      subject: z.string(),
+      body: z.string(),
+    }))
+    .describe(
+      "Draft an email to a recipient for a given purpose."
+    )
+)
+
+const haveAiWriteEmailSaga = createSaga('haveAiWriteEmail', z.object({
+  recipient: z.string().email(),
+  purpose: z.string(),
+}))
+  .addStep({
+    name: 'draftEmail',
+    run: async (initialPayload, priorResults, helpers) => {
+      // Expensive gpt-4 call
+      const { subject, body } = await draftEmailFunction(initialPayload.purpose);
+      return { subject, body };
+    }
+  })
+  .addStep({
+    name: 'sendEmail',
+    run: async (initialPayload, priorResults, helpers) => {
+      // Email sending that could fail for all sorts of good, retryable reasons
+      await mailchimp.sendEmail(initialPayload.email);
+    }
+  })
+```
 
 ## Danger
 
@@ -112,7 +158,7 @@ const sendEmail = createTask(
 
 const taskList = {
   sendEmail,
-	...makeReservationSaga.getTaskList()
+  ...makeReservationSaga.getTaskList()
 } as const; // you need this as const declaration!!!
 
 let runner: Runner;
