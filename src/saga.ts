@@ -1,24 +1,28 @@
 import { Job, JobHelpers } from "graphile-worker";
-import { createTask, TypedTask, AddJobFn } from "graphile-worker-zod";
+import { createTask, TypedTask } from "graphile-worker-zod";
 import { ZodTypeAny, z } from "zod";
 
-type TaskNamePayloadMaps<
-  TaskListType extends Record<string, TypedTask<any, any>>
-> = {
-  [Name in keyof TaskListType]: Parameters<TaskListType[Name]>[0];
+type TaskNamePayloadMaps<TaskListType> = {
+  [Name in keyof TaskListType]: TaskListType[Name] extends TypedTask<
+    infer Payload,
+    any
+  >
+    ? Payload
+    : never;
 };
 
-type KeysWithoutBar<T extends Record<string, any>> = {
+type KeysWithoutBar<T> = {
   [K in keyof T]: K extends `${infer _Start}|${infer _End}` ? never : K;
 }[keyof T];
+
 /**
  * This is a function you can use to get a addJob function typed
  * to prevent you from accidentally queueing an intermediate
  * step to a saga
  */
-type SagaTolerantAddJobFn<
-  TaskListType extends Record<string, TypedTask<any, any>>
-> = <Name extends KeysWithoutBar<TaskListType>>(
+type SagaTolerantAddJobFn<TaskListType> = <
+  Name extends KeysWithoutBar<TaskListType>
+>(
   name: Name,
   payload: TaskNamePayloadMaps<TaskListType>[Name]
 ) => Promise<Job>;
@@ -40,12 +44,7 @@ const makeSagaJobHelpers = (helpers: JobHelpers): SagaJobHelpers => {
   };
 };
 
-type Step<
-  PriorSteps extends PriorStepsTemplate,
-  StepResult,
-  StepName extends string,
-  InitialPayload
-> = {
+type Step<PriorSteps, StepResult, StepName extends string, InitialPayload> = {
   name: StepName;
   run: (
     initialPayload: InitialPayload,
@@ -62,27 +61,28 @@ type Step<
 
 type StepTemplate = Step<any, any, any, any>;
 
-type PriorStepsTemplate = Record<string, StepTemplate>;
-
-type PriorResultsPayload<PriorSteps extends PriorStepsTemplate> = {
-  [key in keyof PriorSteps]: Awaited<ReturnType<PriorSteps[key]["run"]>>;
+type PriorResultsPayload<PriorSteps> = {
+  [key in keyof PriorSteps]: PriorSteps[key] extends Step<
+    any,
+    infer Result,
+    any,
+    any
+  >
+    ? Result
+    : never;
 };
 
-type GetTaskList<
-  SagaName extends string,
-  PriorSteps extends PriorStepsTemplate
-> = Record<SagaName, TypedTask<unknown, unknown>> &
-  Record<
-    `${SagaName}|${keyof PriorSteps & string}`,
-    TypedTask<unknown, unknown>
-  > &
+type GetTaskList<SagaName extends string, PriorSteps> = Record<
+  `${SagaName}|${keyof PriorSteps & string}`,
+  TypedTask<unknown, unknown>
+> &
   Record<
     `${SagaName}|${keyof PriorSteps & string}|cancel`,
     TypedTask<unknown, unknown>
   >;
 
 type AddStepToPriorSteps<
-  PriorSteps extends PriorStepsTemplate,
+  PriorSteps,
   StepName extends string,
   StepResult,
   InitialPayload
@@ -93,32 +93,6 @@ type AddStepToPriorSteps<
     StepName,
     InitialPayload
   >;
-};
-
-type Saga<
-  SagaName extends string,
-  InitialPayload extends ZodTypeAny,
-  PriorSteps extends PriorStepsTemplate
-> = {
-  name: SagaName;
-  addStep: <NextStepName extends string, NextStepResult>(
-    step: Step<
-      PriorSteps,
-      NextStepResult,
-      NextStepName,
-      z.infer<InitialPayload>
-    >
-  ) => Saga<
-    SagaName,
-    InitialPayload,
-    AddStepToPriorSteps<
-      PriorSteps,
-      NextStepName,
-      NextStepResult,
-      z.infer<InitialPayload>
-    >
-  >;
-  getTaskList: () => GetTaskList<SagaName, PriorSteps>;
 };
 
 const wrappedRunPayloadSchema = z.object({
@@ -132,23 +106,33 @@ const wrappedCancelPayloadSchema = z.object({
   runResult: z.any(),
 });
 
-export const createSaga = <
+export class Saga<
   SagaName extends string,
-  InitialPayload extends ZodTypeAny
->(
-  name: SagaName,
-  initialPayload: InitialPayload
-): Saga<SagaName, InitialPayload, {}> => {
-  const sagaName = name;
-  const steps: StepTemplate[] = [];
+  InitialPayload extends ZodTypeAny,
+  PriorSteps
+> {
+  steps: StepTemplate[] = [];
 
-  const addStep = (step: StepTemplate) => {
-    steps.push(step);
-    return { name: sagaName, addStep, getTaskList };
-  };
+  constructor(
+    public sagaName: SagaName,
+    public initialPayload: InitialPayload
+  ) {}
 
-  const getTaskList = () => {
-    const firstStep = steps[0];
+  addStep<StepName extends string, StepResult>(
+    step: Step<PriorSteps, StepResult, StepName, InitialPayload>
+  ): Saga<
+    SagaName,
+    InitialPayload,
+    AddStepToPriorSteps<PriorSteps, StepName, StepResult, InitialPayload>
+  > {
+    this.steps.push(step);
+    return this as any;
+  }
+
+  getTaskList(): {
+    [sagaName in SagaName]: TypedTask<z.infer<InitialPayload>, void>;
+  } & GetTaskList<SagaName, PriorSteps> {
+    const firstStep = this.steps[0];
 
     const wrapRun = (
       stepIdx: number,
@@ -170,13 +154,13 @@ export const createSaga = <
           );
 
           const accumulatedResults = Object.assign({}, previousResults, {
-            [steps[stepIdx].name]: stepExecutionResult,
+            [this.steps[stepIdx].name]: stepExecutionResult,
           });
 
           // If there's a next step, queue it
-          const nextStep = steps[stepIdx + 1];
+          const nextStep = this.steps[stepIdx + 1];
           if (nextStep) {
-            const nextJobName = `${sagaName}|${nextStep.name}`;
+            const nextJobName = `${this.sagaName}|${nextStep.name}`;
             await helpers.addJob(nextJobName, {
               initialPayload,
               previousResults: accumulatedResults,
@@ -187,14 +171,14 @@ export const createSaga = <
         } catch (ex) {
           if (ex instanceof CancelError) {
             // If there's a prior step, queue its cancel function
-            const stepsUntilMeReversed = steps.slice(0, stepIdx).reverse();
+            const stepsUntilMeReversed = this.steps.slice(0, stepIdx).reverse();
 
             const closestPriorStepWithCancel = stepsUntilMeReversed.find(
               (step) => typeof step.cancel === "function"
             );
 
             if (closestPriorStepWithCancel) {
-              const priorJobCancelName = `${sagaName}|${closestPriorStepWithCancel.name}|cancel`;
+              const priorJobCancelName = `${this.sagaName}|${closestPriorStepWithCancel.name}|cancel`;
 
               // For easier DX, we find the prior step's result and pass it to the cancel function separately
               const priorStepResult =
@@ -209,7 +193,7 @@ export const createSaga = <
               // If there's no prior cancel function, we need to throw - you can't cancel the first step
               // or a step that doesn't have a cancel function before it
               throw new Error(
-                `Unexpected cancellation triggered in step ${steps[stepIdx].name}. You can't call cancel with nothing before to cancel!`
+                `Unexpected cancellation triggered in step ${this.steps[stepIdx].name}. You can't call cancel with nothing before to cancel!`
               );
             }
           } else {
@@ -228,7 +212,7 @@ export const createSaga = <
       return async (payload: unknown, helpers: JobHelpers) => {
         if (!cancel) {
           throw new Error(
-            `Tried to cancel step ${steps[stepIdx].name} but it has no cancel function.  This is probably a mistake in graphile-saga itself, or you have re-deployed graphile-saga without a cancel function that your database still requires.`
+            `Tried to cancel step ${this.steps[stepIdx].name} but it has no cancel function.  This is probably a mistake in graphile-saga itself, or you have re-deployed graphile-saga without a cancel function that your database still requires.`
           );
         }
 
@@ -238,13 +222,13 @@ export const createSaga = <
         await cancel(initialPayload, previousResults, runResult, helpers);
 
         // If there's a prior step, queue its cancel function
-        const closestPriorStepWithCancel = steps
+        const closestPriorStepWithCancel = this.steps
           .slice(0, stepIdx)
           .reverse()
           .find((step) => !!step.cancel);
 
         if (closestPriorStepWithCancel) {
-          const priorJobCancelName = `${sagaName}|${closestPriorStepWithCancel.name}|cancel`;
+          const priorJobCancelName = `${this.sagaName}|${closestPriorStepWithCancel.name}|cancel`;
 
           // For easier DX, we find the prior step's result and pass it to the cancel function separately
           const priorStepResult =
@@ -262,12 +246,15 @@ export const createSaga = <
     };
 
     const taskList = {
-      [sagaName]: createTask(initialPayload, wrapRun(0, firstStep.run)), // TODO - wrap firstStep.run
+      [this.sagaName]: createTask(
+        this.initialPayload,
+        wrapRun(0, firstStep.run)
+      ), // TODO - wrap firstStep.run
     };
 
-    steps.forEach((step, idx) => {
-      const runKey = `${sagaName}|${step.name}`;
-      const cancelKey = `${sagaName}|${step.name}|cancel`;
+    this.steps.forEach((step, idx) => {
+      const runKey = `${this.sagaName}|${step.name}`;
+      const cancelKey = `${this.sagaName}|${step.name}|cancel`;
 
       const runTask = wrapRun(idx, step.run);
       const cancelTask = wrapCancel(idx, step.cancel);
@@ -276,16 +263,6 @@ export const createSaga = <
       taskList[cancelKey] = cancelTask;
     });
 
-    return taskList;
-  };
-
-  return {
-    name: sagaName,
-    addStep: addStep as Saga<SagaName, InitialPayload, {}>["addStep"],
-    getTaskList: getTaskList as Saga<
-      SagaName,
-      InitialPayload,
-      {}
-    >["getTaskList"],
-  };
-};
+    return taskList as any;
+  }
+}

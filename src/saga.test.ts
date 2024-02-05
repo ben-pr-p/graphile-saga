@@ -1,6 +1,6 @@
 import { describe, test, expect, mock, beforeAll } from "bun:test";
 import { z } from "zod";
-import { createSaga } from "./saga";
+import { Saga } from "./saga";
 import { runTaskListOnce, quickAddJob, TaskList, run } from "graphile-worker";
 import { Pool } from "pg";
 
@@ -22,7 +22,7 @@ describe("graphile-saga", () => {
   test("saga.getTaskList should return a task list with the initial task, all the steps, and the cancel steps", async () => {
     const sagaName = "test-get-task-list";
 
-    const saga = createSaga(sagaName, z.object({ name: z.string() }))
+    const saga = new Saga(sagaName, z.object({ name: z.string() }))
       .addStep({
         name: "step1",
         run: async () => {},
@@ -48,7 +48,7 @@ describe("graphile-saga", () => {
 
     const fn = mock(async () => {});
 
-    const saga = createSaga(sagaName, z.object({ name: z.string() })).addStep({
+    const saga = new Saga(sagaName, z.object({ name: z.string() })).addStep({
       name: "step1",
       run: fn,
     });
@@ -69,7 +69,7 @@ describe("graphile-saga", () => {
 
     const fn2 = mock(async (shouldBeResult1: string) => {});
 
-    const saga = createSaga(sagaName, z.object({ name: z.string() }))
+    const saga = new Saga(sagaName, z.object({ name: z.string() }))
       .addStep({
         name: "step1",
         run: async (initialPayload, priorResults, helpers) => {
@@ -113,7 +113,7 @@ describe("graphile-saga", () => {
       }
     );
 
-    const saga = createSaga(sagaName, z.string())
+    const saga = new Saga(sagaName, z.string())
       .addStep({
         name: "step1",
         run: async (initialPayload, priorResults, helpers) => {
@@ -164,7 +164,7 @@ describe("graphile-saga", () => {
       }
     );
 
-    const saga = createSaga(sagaName, z.string())
+    const saga = new Saga(sagaName, z.string())
       .addStep({
         name: "step1",
         run: async (initialPayload, priorResults, helpers) => {
@@ -223,7 +223,7 @@ describe("graphile-saga", () => {
       }
     );
 
-    const saga = createSaga(sagaName, z.string())
+    const saga = new Saga(sagaName, z.string())
       .addStep({
         name: "step1",
         run: async (initialPayload, priorResults, helpers) => {
