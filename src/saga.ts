@@ -119,11 +119,16 @@ export class Saga<
   ) {}
 
   addStep<StepName extends string, StepResult>(
-    step: Step<PriorSteps, StepResult, StepName, InitialPayload>
+    step: Step<PriorSteps, StepResult, StepName, z.infer<InitialPayload>>
   ): Saga<
     SagaName,
     InitialPayload,
-    AddStepToPriorSteps<PriorSteps, StepName, StepResult, InitialPayload>
+    AddStepToPriorSteps<
+      PriorSteps,
+      StepName,
+      StepResult,
+      z.infer<InitialPayload>
+    >
   > {
     this.steps.push(step);
     return this as any;
