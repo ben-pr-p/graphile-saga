@@ -1,1 +1,1 @@
-export { createSaga, AddJobFn } from "./src/saga";
+export { Saga, AddJobFn } from "./src/saga";

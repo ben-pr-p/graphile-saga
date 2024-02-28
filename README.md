@@ -16,16 +16,16 @@ bun add graphile-saga
 
 ## Usage
 
-To create a saga, first define the initial payload schema with `zod`, then use `createSaga` to define the saga steps. Each step can have a `run` function and an optional `cancel` function for rollback purposes.
+To create a saga, first define the initial payload schema with `zod`, then use `new Saga` to define the saga steps. Each step can have a `run` function and an optional `cancel` function for rollback purposes.
 
 ```typescript
 // makeSeservationSaga.ts
-import { createSaga } from 'graphile-saga';
+import { Saga } from 'graphile-saga';
 import { z } from 'zod';
 import { hotelService, flightService, carService } from './travelServices';
 
 // Define your saga
-const makeReservationSaga = createSaga('makeReservation', z.object({
+const makeReservationSaga = new Saga('makeReservation', z.object({
   hotelId: z.number(),
   airlineId: z.number(),
   carId: z.number(),
@@ -109,7 +109,7 @@ const draftEmailFunction = ai(
     )
 )
 
-const haveAiWriteEmailSaga = createSaga('haveAiWriteEmail', z.object({
+const haveAiWriteEmailSaga = new Saga('haveAiWriteEmail', z.object({
   recipient: z.string().email(),
   purpose: z.string(),
 }))
